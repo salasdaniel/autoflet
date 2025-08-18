@@ -1,0 +1,432 @@
+"use client";
+// como utilizamos react-hook-form, debemos importar los hooks y componentes necesarios y el use cliente ya que se ejecuta del lado del cliente el hook
+import AppLayout from '@/layouts/app-layout';
+import { Head } from '@inertiajs/react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+    Table,
+    TableBody,
+    TableCaption,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+    // TableFooter
+} from "@/components/ui/table"
+import { useEffect, useState } from 'react';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog"
+
+import { Badge } from "@/components/ui/badge"
+
+
+
+export default function FormIndex() {
+
+    type paymentOption = {
+        id_pago: number;
+        nro_contrato: number;
+        chofer: string;
+        vehiculo: string;
+        chapa: string;
+        monto_pago: number;
+        moneda: string;
+        fecha_pago: string;
+        fecha_cobro: string | null;
+        pagado: number;
+        documento_chofer: string;
+        contrato_activo: number;
+    };
+
+    const [paymentDetails, setPaymentDetails] = useState<paymentOption[]>([]);
+    const [paginaActual, setPaginaActual] = useState(1);
+    const [itemsPorPagina, setItemsPorPagina] = useState(10);
+
+    // Filtros individuales
+    const [filtroVehiculo, setFiltroVehiculo] = useState('');
+    const [filtroChofer, setFiltroChofer] = useState('');
+    const [filtroContrato, setFiltroContrato] = useState('');
+    const [filtroChapa, setFiltroChapa] = useState('');
+    const [filtroFechaCobro, setFiltroFechaCobro] = useState('');
+    const [filtroPagado, setFiltroPagado] = useState('');
+
+    // Ordenamiento (opcional)
+    const [ordenCampo, setOrdenCampo] = useState<'id_pago' | 'nro_contrato' | 'chofer' | 'vehiculo' | 'chapa' | 'fecha_pago' | 'fecha_cobro' | 'pagado'>('id_pago');
+    const [orden, setOrden] = useState<'asc' | 'desc'>('asc');
+    const [totales, setTotales] = useState<totalesOption>({
+        total_pagado: 0,
+        total_pendiente: 0,
+        pagos_cobrados: 0,
+        pagos_pendientes: 0,
+    });
+
+    type totalesOption = {
+        total_pagado: number;
+        total_pendiente: number;
+        pagos_cobrados: number;
+        pagos_pendientes: number;
+    }
+
+
+
+    const loadPayments = () => {
+        fetch("/getPaymentDetails")
+            .then((res) => res.json())
+            .then((data) => setPaymentDetails(data));
+    };
+
+    const totalPayments = () => {
+        fetch("/getTotalPayment")
+            .then((res) => res.json())
+            .then((data) => setTotales(data));
+    };
+
+    useEffect(() => {
+        loadPayments();
+        totalPayments();
+    }, []);
+    // aqui se debe enviar los datos del formulario al servidor 
+
+    // Filtrado combinable
+    const pagosFiltrados = paymentDetails.filter((p) => {
+        return (
+            (filtroVehiculo === '' || p.vehiculo.toLowerCase().includes(filtroVehiculo.toLowerCase())) &&
+            (filtroChofer === '' || p.chofer.toLowerCase().includes(filtroChofer.toLowerCase())) &&
+            (filtroContrato === '' || String(p.nro_contrato).includes(filtroContrato)) &&
+            (filtroChapa === '' || p.chapa.toLowerCase().includes(filtroChapa.toLowerCase())) &&
+            (filtroFechaCobro === '' || (p.fecha_cobro ?? '').includes(filtroFechaCobro)) &&
+            (filtroPagado === '' || (filtroPagado === '1' ? p.pagado === 1 : p.pagado === 0))
+        );
+    });
+
+    // Ordenar
+    const pagosOrdenados = [...pagosFiltrados].sort((a, b) => {
+        const aVal = String(a[ordenCampo] ?? '').toLowerCase();
+        const bVal = String(b[ordenCampo] ?? '').toLowerCase();
+        if (aVal < bVal) return orden === 'asc' ? -1 : 1;
+        if (aVal > bVal) return orden === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    // Paginación
+    const totalPaginas = Math.ceil(pagosOrdenados.length / itemsPorPagina);
+    const pagosPaginados = pagosOrdenados.slice(
+        (paginaActual - 1) * itemsPorPagina,
+        paginaActual * itemsPorPagina
+    );
+
+    // Reset página si cambian los filtros o items por página
+    useEffect(() => {
+        setPaginaActual(1);
+    }, [filtroVehiculo, filtroChofer, filtroContrato, filtroChapa, filtroFechaCobro, filtroPagado, itemsPorPagina]);
+
+    return (
+        <AppLayout>
+            <Head title="Pagos" />
+            <div className="flex flex-col gap-6 p-4">
+
+                <Card>
+                    <CardHeader className="flex flex-row gap-4 justify-between items-center">
+                        <CardTitle className="flex-shrink-0">Detalle de Pagos</CardTitle>
+
+                    </CardHeader>
+
+                    <CardContent className="grid gap-4 md:grid-cols-4 items-end">
+
+                        <div>
+                            <label className="block mb-1 font-medium">Total Cobrado</label>
+                            <div className="text-xl font-bold text-green-600">
+                                {Number(totales.total_pagado).toLocaleString("es-PY", { style: "currency", currency: "PYG", minimumFractionDigits: 0 })}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block mb-1 font-medium">Total a Cobrar</label>
+                            <div className="text-xl font-bold text-green-600">
+                                {Number(totales.total_pendiente).toLocaleString("es-PY", { style: "currency", currency: "PYG", minimumFractionDigits: 0 })}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block mb-1 font-medium">Pagos Cobrados</label>
+                            <div className="text-xl font-bold text-green-600">{totales.pagos_cobrados}</div>
+                        </div>
+                        <div>
+                            <label className="block mb-1 font-medium">Pagos Pendientes</label>
+                            <div className="text-xl font-bold text-green-600">{totales.pagos_pendientes}</div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    {/* Empiezan los filtros */}
+                    <div className="w-full flex flex-col md:flex-row md:items-center md:justify-left gap-2 md:gap-4 px-4 py-2 flex-wrap">
+                        <div>
+                            <Label>Vehículo</Label>
+                            <Input
+                                placeholder="Vehículo"
+                                value={filtroVehiculo}
+                                onChange={e => setFiltroVehiculo(e.target.value)}
+                                className="w-[140px]"
+                            />
+                        </div>
+                        <div>
+                            <Label>Chofer</Label>
+                            <Input
+                                placeholder="Chofer"
+                                value={filtroChofer}
+                                onChange={e => setFiltroChofer(e.target.value)}
+                                className="w-[140px]"
+                            />
+                        </div>
+                        <div>
+                            <Label>Contrato</Label>
+                            <Input
+                                placeholder="Contrato"
+                                value={filtroContrato}
+                                onChange={e => setFiltroContrato(e.target.value)}
+                                className="w-[100px]"
+                            />
+                        </div>
+                        <div>
+                            <Label>Chapa</Label>
+                            <Input
+                                placeholder="Chapa"
+                                value={filtroChapa}
+                                onChange={e => setFiltroChapa(e.target.value)}
+                                className="w-[100px]"
+                            />
+                        </div>
+                        <div>
+                            <Label>Fecha de Cobro</Label>
+                            <Input
+                                type="date"
+                                value={filtroFechaCobro}
+                                onChange={e => setFiltroFechaCobro(e.target.value)}
+                                className="w-[150px]"
+                            />
+                        </div>
+                        <div>
+                            <Label>Pagado</Label>
+                            <Select value={filtroPagado} onValueChange={setFiltroPagado}>
+                                <SelectTrigger className="w-[100px]">
+                                    <SelectValue placeholder="Todos" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos</SelectItem>
+                                    <SelectItem value="1">Sí</SelectItem>
+                                    <SelectItem value="0">No</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <Label>Ordenar por</Label>
+                            <Select value={ordenCampo} onValueChange={value => setOrdenCampo(value as typeof ordenCampo)}>
+                                <SelectTrigger className="w-[140px]">
+                                    <SelectValue placeholder="Campo" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="id_pago">ID Pago</SelectItem>
+                                    <SelectItem value="nro_contrato">Contrato</SelectItem>
+                                    <SelectItem value="chofer">Chofer</SelectItem>
+                                    <SelectItem value="vehiculo">Vehículo</SelectItem>
+                                    <SelectItem value="chapa">Chapa</SelectItem>
+                                    <SelectItem value="fecha_pago">Fecha Pago</SelectItem>
+                                    <SelectItem value="fecha_cobro">Fecha Cobro</SelectItem>
+                                    <SelectItem value="pagado">Pagado</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="mt-6">
+                            <Button
+                                variant="outline"
+                                onClick={() => setOrden(orden === 'asc' ? 'desc' : 'asc')}
+                                className="w-[140px]"
+                            >
+                                {orden === 'asc' ? 'Ascendente' : 'Descendente'}
+                            </Button>
+                        </div>
+                        <div>
+                            <Label>Items por página</Label>
+                            <Select value={String(itemsPorPagina)} onValueChange={value => setItemsPorPagina(Number(value))}>
+                                <SelectTrigger className="w-[120px]">
+                                    <SelectValue placeholder="Cantidad" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {[10, 20, 50, 100].map(num => (
+                                        <SelectItem key={num} value={String(num)}>{num}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    {/* terminan los filtros */}
+                    <CardHeader>
+                        <CardTitle>Listado de Pagos</CardTitle>
+                        <p className="text-sm text-muted-foreground">Detalle de los pagos generados por contrato.</p>
+                    </CardHeader>
+                    <CardContent className="overflow-x-auto p-6">
+                        <div className="min-w-full"></div>
+                        <Table>
+                            <TableCaption>Lista de pagos recientes.</TableCaption>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-[80px]">ID Pago</TableHead>
+                                    <TableHead>Contrato</TableHead>
+                                    <TableHead>Chofer</TableHead>
+                                    <TableHead>Vehículo</TableHead>
+                                    <TableHead>Chapa</TableHead>
+                                    <TableHead>Monto</TableHead>
+                                    <TableHead>Moneda</TableHead>
+                                    <TableHead>Fecha Pago</TableHead>
+                                    <TableHead>Fecha Cobro</TableHead>
+                                    <TableHead>Pagado</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {pagosPaginados?.map((payment) => (
+                                    <TableRow key={payment.id_pago}>
+                                        <TableCell className="font-medium">{payment.id_pago}</TableCell>
+                                        <TableCell>{payment.nro_contrato}</TableCell>
+                                        <TableCell>{payment.chofer}</TableCell>
+                                        <TableCell>{payment.vehiculo}</TableCell>
+                                        <TableCell>{payment.chapa}</TableCell>
+                                        <TableCell>{payment.monto_pago}</TableCell>
+                                        <TableCell>{payment.moneda}</TableCell>
+                                        <TableCell>{payment.fecha_pago}</TableCell>
+                                        <TableCell>{payment.fecha_cobro ?? '-'}</TableCell>
+                                        <TableCell>{payment.pagado ? 'SI' : 'NO'}</TableCell>
+                                        {/* Boton pagar */}
+                                        <TableCell>
+                                            <Dialog>
+                                                <form>
+                                                    <DialogTrigger asChild>
+                                                        <Badge
+                                                            variant="secondary"
+                                                            className="bg-blue-500 text-white dark:bg-blue-600 hover:cursor-pointer hover:bg-blue-400"
+
+                                                            
+                                                        >
+                                                            Pagar
+                                                        </Badge>
+                                                    </DialogTrigger>
+                                                    <DialogContent className="sm:max-w-[425px]">
+                                                        <DialogHeader>
+                                                            <DialogTitle>Edit profile</DialogTitle>
+                                                            <DialogDescription>
+                                                                Make changes to your profile here. Click save when you&apos;re
+                                                                done.
+                                                            </DialogDescription>
+                                                        </DialogHeader>
+                                                        <div className="grid gap-4">
+                                                            <div className="grid gap-3">
+                                                                <Label htmlFor="name-1">Name</Label>
+                                                                <Input id="name-1" name="name" defaultValue="Pedro Duarte" />
+                                                            </div>
+                                                            <div className="grid gap-3">
+                                                                <Label htmlFor="username-1">Username</Label>
+                                                                <Input id="username-1" name="username" defaultValue="@peduarte" />
+                                                            </div>
+                                                        </div>
+                                                        <DialogFooter>
+                                                            <DialogClose asChild>
+                                                                <Button variant="outline">Cancel</Button>
+                                                            </DialogClose>
+                                                            <Button type="submit">Save changes</Button>
+                                                        </DialogFooter>
+                                                    </DialogContent>
+                                                </form>
+                                            </Dialog>
+                                        </TableCell>
+                                        {/* fin boton pagar */}
+                                        {/* Boton pagar */}
+                                        <TableCell>
+                                            <Dialog>
+                                                <form>
+                                                    <DialogTrigger asChild>
+                                                        <Badge
+                                                            variant="destructive"
+                                                            className='hover:cursor-pointer'
+                                                        >
+                                                            Anular
+                                                        </Badge>
+                                                    </DialogTrigger>
+                                                    <DialogContent className="sm:max-w-[425px]">
+                                                        <DialogHeader>
+                                                            <DialogTitle>Edit profile</DialogTitle>
+                                                            <DialogDescription>
+                                                                Make changes to your profile here. Click save when you&apos;re
+                                                                done.
+                                                            </DialogDescription>
+                                                        </DialogHeader>
+                                                        <div className="grid gap-4">
+                                                            <div className="grid gap-3">
+                                                                <Label htmlFor="name-1">Name</Label>
+                                                                <Input id="name-1" name="name" defaultValue="Pedro Duarte" />
+                                                            </div>
+                                                            <div className="grid gap-3">
+                                                                <Label htmlFor="username-1">Username</Label>
+                                                                <Input id="username-1" name="username" defaultValue="@peduarte" />
+                                                            </div>
+                                                        </div>
+                                                        <DialogFooter>
+                                                            <DialogClose asChild>
+                                                                <Button variant="outline">Cancel</Button>
+                                                            </DialogClose>
+                                                            <Button type="submit">Save changes</Button>
+                                                        </DialogFooter>
+                                                    </DialogContent>
+                                                </form>
+                                            </Dialog>
+                                        </TableCell>
+                                        {/* fin boton pagar */}
+                                        {/* fin botones */}
+
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                    <div className="flex justify-between items-center px-6 pb-4">
+                        <Button
+                            onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
+                            disabled={paginaActual === 1}
+                        >
+                            Anterior
+                        </Button>
+
+                        <span className="text-sm text-muted-foreground">
+                            Página {paginaActual} de {totalPaginas}
+                        </span>
+
+                        <Button
+                            onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))}
+                            disabled={paginaActual === totalPaginas}
+                        >
+                            Siguiente
+                        </Button>
+                    </div>
+
+                </Card>
+            </div>
+
+
+        </AppLayout>
+    )
+}
