@@ -398,7 +398,7 @@ export default function PagosIndex() {
                         <div>
                             <label className="block mb-1 font-medium">Total Valorizado</label>
                             <div className="text-xl font-bold text-green-600">
-                                {totales.total_valorizado.toLocaleString("es-PY", { style: "currency", currency: "PYG", minimumFractionDigits: 0 })}
+                                {(Number(totales?.total_valorizado ?? 0) || 0).toLocaleString("es-PY", { style: "currency", currency: "PYG", minimumFractionDigits: 0 })}
                             </div>
                         </div>
                         <div>
