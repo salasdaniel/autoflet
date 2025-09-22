@@ -34,53 +34,47 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // apis 
 
     Route::get('/getTotalesVehiculos', function () {
-        $totales = DB::table('vehiculos as v')
-            ->selectRaw('
-            SUM(valor_compra) as total_valorizado,
-            COUNT(*) as vehiculos_activos,
-            (SELECT COUNT(*) FROM chofers WHERE activo = true) as choferes_activos,
-            (SELECT COUNT(*) FROM contratos WHERE activo = true) as contratos_activos
-        ')
-            ->first();
+        $totales = [
+            'total_valorizado' => \App\Models\Vehiculo::sum('valor_compra'),
+            'vehiculos_activos' => \App\Models\Vehiculo::count(),
+            'choferes_activos' => \App\Models\Chofer::count(),
+            'contratos_activos' => \App\Models\Contratos::where('activo', true)->count()
+        ];
 
         return response()->json($totales);
     });
 
     Route::get('/getTotalPayment', function () {
-        $totales = DB::table('calendario_pagos')
-            ->selectRaw('
-            COALESCE(SUM(monto_pago) FILTER (WHERE pagado = true AND activo = true)::numeric, 0) AS total_pagado,
-            COALESCE(SUM(monto_pago) FILTER (WHERE pagado = false AND activo = true)::numeric, 0) AS total_pendiente,
-            COUNT(*) FILTER (WHERE pagado = true AND activo = true) AS pagos_cobrados,
-            COUNT(*) FILTER (WHERE pagado = false AND activo = true) AS pagos_pendientes
-        ')
-            ->first();
+        $totales = [
+            'total_pagado' => \App\Models\CalendarioPagos::where('pagado', true)->where('activo', true)->sum('monto_pago'),
+            'total_pendiente' => \App\Models\CalendarioPagos::where('pagado', false)->where('activo', true)->sum('monto_pago'),
+            'pagos_cobrados' => \App\Models\CalendarioPagos::where('pagado', true)->where('activo', true)->count(),
+            'pagos_pendientes' => \App\Models\CalendarioPagos::where('pagado', false)->where('activo', true)->count()
+        ];
 
         return response()->json($totales);
     });
 
     Route::get('/getPaymentDetails', function () {
-        $paymentDetails = DB::table('calendario_pagos as cp')
-            ->leftJoin('chofers as c', 'c.id', '=', 'cp.id_chofer')
-            ->leftJoin('contratos as ct', 'ct.id', '=', 'cp.id_contrato')
-            ->leftJoin('vehiculos as v', 'v.id', '=', 'ct.id_vehiculo')
-            ->select([
-                'cp.id as id_pago',
-                'cp.id_contrato as nro_contrato',
-                'c.nombre_completo as chofer',
-                DB::raw("CONCAT(v.id, '-', v.modelo) as vehiculo"),
-                'v.chapa',
-                'cp.monto_pago',
-                'ct.moneda',
-                'cp.fecha_pago',
-                'cp.fecha_cobro',
-                'cp.pagado',
-                'c.cedula as documento_chofer',
-                'ct.activo as contrato_activo'
-            ])
-            ->get();
-
-        return response()->json($paymentDetails);
+        return \App\Models\CalendarioPagos::with(['chofer', 'contrato.vehiculo'])
+            ->get()
+            ->map(function($pago) {
+                return [
+                    'id_pago' => $pago->id,
+                    'nro_contrato' => $pago->id_contrato,
+                    'chofer' => $pago->chofer ? $pago->chofer->nombre_completo : null,
+                    'vehiculo' => $pago->contrato && $pago->contrato->vehiculo ? 
+                        $pago->contrato->vehiculo->id . '-' . $pago->contrato->vehiculo->modelo : null,
+                    'chapa' => $pago->contrato && $pago->contrato->vehiculo ? $pago->contrato->vehiculo->chapa : null,
+                    'monto_pago' => $pago->monto_pago,
+                    'moneda' => $pago->contrato ? $pago->contrato->moneda : 'PYG',
+                    'fecha_pago' => $pago->fecha_pago,
+                    'fecha_cobro' => $pago->fecha_cobro,
+                    'pagado' => $pago->pagado,
+                    'documento_chofer' => $pago->chofer ? $pago->chofer->cedula : null,
+                    'contrato_activo' => $pago->contrato ? $pago->contrato->activo : false
+                ];
+            });
     });
 
     Route::get('/getChofer', function () {
@@ -90,10 +84,28 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::get('/getVehiculos', function () {
-        return DB::table('vehiculos as v')
-            ->leftJoin('chofers as c', 'c.id', '=', 'v.id_chofer')
-            ->select('v.*', 'c.nombre_completo', 'c.cedula')
+        $userId = \Illuminate\Support\Facades\Auth::id();
+        // \Illuminate\Support\Facades\Log::info('Usuario autenticado en /getVehiculos: ' . $userId);
+        
+        $vehiculos = \App\Models\Vehiculo::with('chofer')
+            ->where('id_user',$userId)
             ->get();
+        // \Illuminate\Support\Facades\Log::info('Cantidad de vehículos obtenidos: ' . $vehiculos->count());
+        
+        return $vehiculos->map(function($vehiculo) {
+            return [
+                'id' => $vehiculo->id,
+                'chapa' => $vehiculo->chapa,
+                'modelo' => $vehiculo->modelo,
+                'color' => $vehiculo->color,
+                'valor_compra' => $vehiculo->valor_compra,
+                'fecha_compra' => $vehiculo->fecha_compra,
+                'id_chofer' => $vehiculo->id_chofer,
+                'nombre_completo' => $vehiculo->chofer ? $vehiculo->chofer->nombre_completo : null,
+                'cedula' => $vehiculo->chofer ? $vehiculo->chofer->cedula : null,
+                'id_user' => $vehiculo->id_user
+            ];
+        });
     });
 });
 
