@@ -928,7 +928,7 @@ export default function PagosIndex() {
                                         <br />
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button className='text-white bg-blue-500 hover:bg-blue-700 hover:text-white py-2 px-4 rounded w-full hover:cursor-pointer' size="sm">Ver Pagos</Button>
+                                        <Button onClick={() => router.visit('/paymentsDetails')} className='text-white bg-blue-500 hover:bg-blue-700 hover:text-white py-2 px-4 rounded w-full hover:cursor-pointer' size="sm">Ver Pagos</Button>
                                         {/* <Button variant="destructive" size="sm" className="w-full">No Pagó</Button> */}
                                     </div>
                                 </CardContent>
