@@ -107,6 +107,82 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ];
         });
     });
+
+    // Rutas para manejo de bancos
+    Route::get('/getBancos', function () {
+        $userId = \Illuminate\Support\Facades\Auth::id();
+        
+        return \App\Models\Banco::with('entidad')
+            ->where('id_user', $userId)
+            ->get()
+            ->map(function($banco) {
+                return [
+                    'id' => $banco->id,
+                    'entidad_id' => $banco->entidad_id,
+                    'entidad_nombre' => $banco->entidad ? $banco->entidad->denominacion : null,
+                    'numero_cuenta' => $banco->numero_cuenta,
+                    'moneda' => $banco->moneda,
+                    'titular_nombre' => $banco->titular_nombre,
+                    'titular_documento' => $banco->titular_documento,
+                    'alias' => $banco->alias,
+                    'tipo_alias' => $banco->tipo_alias,
+                    'id_user' => $banco->id_user
+                ];
+            });
+    });
+
+    Route::get('/getEntidades', function () {
+        return \App\Models\Entidad::select('id', 'denominacion')
+            ->orderBy('denominacion')
+            ->get();
+    });
+
+    // Tipos de fo4 cobro y endpoint para registrar pagos
+    Route::get('/tipoFormasPago', [\App\Http\Controllers\PagoController::class, 'tipos']);
+    Route::post('/formaCobroPagos', [\App\Http\Controllers\PagoController::class, 'store']);
+    Route::get('/getPaymentDetail/{idCalendarioPago}', [\App\Http\Controllers\PagoController::class, 'getPaymentDetail']);
+
+    Route::post('/bancos', function (Illuminate\Http\Request $request) {
+        $request->validate([
+            'entidad_id' => 'required|exists:entidades,id',
+            'numero_cuenta' => 'required|string|max:255',
+            'moneda' => 'required|string|max:255',
+            'titular_nombre' => 'required|string|max:255',
+            'titular_documento' => 'required|string|max:255',
+            'alias' => 'required|string|max:255',
+            'tipo_alias' => 'required|string|max:255',
+        ]);
+
+        \App\Models\Banco::create($request->all());
+
+        return redirect()->back()->with('success', 'Banco creado exitosamente');
+    });
+
+    Route::put('/bancos/{banco}', function (Illuminate\Http\Request $request, \App\Models\Banco $banco) {
+        $request->validate([
+            'entidad_id' => 'required|exists:entidades,id',
+            'numero_cuenta' => 'required|string|max:255',
+            'moneda' => 'required|string|max:255',
+            'titular_nombre' => 'required|string|max:255',
+            'titular_documento' => 'required|string|max:255',
+            'alias' => 'required|string|max:255',
+            'tipo_alias' => 'required|string|max:255',
+        ]);
+
+        $banco->update($request->all());
+
+        return redirect()->back()->with('success', 'Banco actualizado exitosamente');
+    });
+
+    Route::delete('/bancos/{banco}', function (\App\Models\Banco $banco) {
+        $banco->delete();
+
+        return redirect()->back()->with('success', 'Banco eliminado exitosamente');
+    });
+
+    Route::get('bancos', function () {
+        return Inertia::render('bancos');
+    })->name('bancos');
 });
 
 require __DIR__ . '/settings.php';

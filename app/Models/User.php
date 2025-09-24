@@ -78,4 +78,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(CalendarioPagos::class, 'id_user');
     }
+
+    /**
+     * Relación con bancos
+     */
+    public function bancos(): HasMany
+    {
+        return $this->hasMany(Banco::class, 'id_user');
+    }
 }

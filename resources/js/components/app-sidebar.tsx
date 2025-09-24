@@ -23,6 +23,11 @@ const mainNavItems: NavItem[] = [
         href: '/paymentsDetails',
         icon: CircleDollarSign,
     },
+    {
+        title: 'Bancos',
+        href: '/bancos',
+        icon: CircleDollarSign,
+    },
 ];
 
 const footerNavItems: NavItem[] = [
