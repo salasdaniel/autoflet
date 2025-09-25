@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use App\Http\Controllers\VehiculoController;
 
@@ -142,6 +143,112 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/formaCobroPagos', [\App\Http\Controllers\PagoController::class, 'store']);
     Route::get('/getPaymentDetail/{idCalendarioPago}', [\App\Http\Controllers\PagoController::class, 'getPaymentDetail']);
 
+    // Endpoint para reporte de ingresos
+    Route::get('/getIngresosData', function () {
+        try {
+            $pagos = \App\Models\CalendarioPagos::with([
+                    'chofer', 
+                    'contrato.vehiculo'
+                ])
+                ->where('pagado', true)
+                ->where('activo', true)
+                ->get();
+            
+            \Illuminate\Support\Facades\Log::info('Cantidad de pagos encontrados: ' . $pagos->count());
+            
+            return $pagos->map(function($pago) {
+                // Buscar la forma de cobro por separado para evitar problemas de relación
+                $formaCobroPago = \App\Models\FormaCobroPago::with('tipoFormaPago')
+                    ->where('id_calendario_pago', $pago->id)
+                    ->first();
+                
+                $formaPago = $formaCobroPago && $formaCobroPago->tipoFormaPago 
+                    ? $formaCobroPago->tipoFormaPago->nombre 
+                    : 'EFECTIVO'; // Asumimos efectivo si no hay registro
+
+                return [
+                    'id' => $pago->id,
+                    'fecha' => $pago->fecha_pago ?? $pago->fecha_cobro,
+                    'concepto' => 'Pago mensual contrato #' . $pago->id_contrato,
+                    'chofer' => $pago->chofer ? $pago->chofer->nombre_completo : 'N/A',
+                    'vehiculo' => $pago->contrato && $pago->contrato->vehiculo ? 
+                        $pago->contrato->vehiculo->modelo : 'N/A',
+                    'chapa' => $pago->contrato && $pago->contrato->vehiculo ? 
+                        $pago->contrato->vehiculo->chapa : 'N/A',
+                    'nro_contrato' => $pago->id_contrato,
+                    'monto' => $pago->monto_pago,
+                    'moneda' => $pago->contrato ? $pago->contrato->moneda : 'PYG',
+                    'forma_pago' => $formaPago,
+                    'tipo' => 'PAGO',
+                    'estado' => 'CONFIRMADO'
+                ];
+            });
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error en getIngresosData: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    });
+
+    // Endpoint para totales de ingresos
+    Route::get('/getTotalesIngresos', function () {
+        try {
+            $totalIngresos = \App\Models\CalendarioPagos::where('pagado', true)
+                ->where('activo', true)
+                ->sum('monto_pago');
+            
+            $cantidadTransacciones = \App\Models\CalendarioPagos::where('pagado', true)
+                ->where('activo', true)
+                ->count();
+
+            // Obtener totales por tipo de forma de pago
+            $ingresosEfectivo = \App\Models\CalendarioPagos::where('calendario_pagos.pagado', true)
+                ->where('calendario_pagos.activo', true)
+                ->leftJoin('forma_cobro_pagos', 'calendario_pagos.id', '=', 'forma_cobro_pagos.calendario_pago_id')
+                ->leftJoin('tipo_forma_pagos', 'forma_cobro_pagos.tipo_forma_pago_id', '=', 'tipo_forma_pagos.id')
+                ->where(function ($query) {
+                    $query->where('tipo_forma_pagos.nombre', 'EFECTIVO')
+                          ->orWhereNull('tipo_forma_pagos.nombre'); // Asumir efectivo si no hay registro
+                })
+                ->sum('calendario_pagos.monto_pago');
+
+            $ingresosTransferencia = \App\Models\CalendarioPagos::where('calendario_pagos.pagado', true)
+                ->where('calendario_pagos.activo', true)
+                ->leftJoin('forma_cobro_pagos', 'calendario_pagos.id', '=', 'forma_cobro_pagos.calendario_pago_id')
+                ->leftJoin('tipo_forma_pagos', 'forma_cobro_pagos.tipo_forma_pago_id', '=', 'tipo_forma_pagos.id')
+                ->where('tipo_forma_pagos.nombre', 'TRANSFERENCIA')
+                ->sum('calendario_pagos.monto_pago');
+
+            $ingresosPOS = \App\Models\CalendarioPagos::where('calendario_pagos.pagado', true)
+                ->where('calendario_pagos.activo', true)
+                ->leftJoin('forma_cobro_pagos', 'calendario_pagos.id', '=', 'forma_cobro_pagos.calendario_pago_id')
+                ->leftJoin('tipo_forma_pagos', 'forma_cobro_pagos.tipo_forma_pago_id', '=', 'tipo_forma_pagos.id')
+                ->where('tipo_forma_pagos.nombre', 'POS')
+                ->sum('calendario_pagos.monto_pago');
+
+            return [
+                'total_ingresos' => $totalIngresos,
+                'ingresos_efectivo' => $ingresosEfectivo ?: 0,
+                'ingresos_transferencia' => $ingresosTransferencia ?: 0,
+                'ingresos_pos' => $ingresosPOS ?: 0,
+                'cantidad_transacciones' => $cantidadTransacciones
+            ];
+        } catch (\Exception $e) {
+            Log::error('Error in getTotalesIngresos:', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            
+            return [
+                'total_ingresos' => 0,
+                'ingresos_efectivo' => 0,
+                'ingresos_transferencia' => 0,
+                'ingresos_pos' => 0,
+                'cantidad_transacciones' => 0
+            ];
+        }
+    });
+
     Route::post('/bancos', function (Illuminate\Http\Request $request) {
         $request->validate([
             'entidad_id' => 'required|exists:entidades,id',
@@ -183,6 +290,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('bancos', function () {
         return Inertia::render('bancos');
     })->name('bancos');
+
+    Route::get('reporteIngresos', function () {
+        return Inertia::render('ingresos');
+    })->name('reporteIngresos');
 });
 
 require __DIR__ . '/settings.php';

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 
@@ -50,6 +51,14 @@ class CalendarioPagos extends Model
     public function contrato(): BelongsTo
     {
         return $this->belongsTo(Contratos::class, 'id_contrato');
+    }
+
+    /**
+     * Relación con forma de cobro pago
+     */
+    public function formaCobroPago(): HasOne
+    {
+        return $this->hasOne(FormaCobroPago::class, 'id_calendario_pago');
     }
 
     /**
