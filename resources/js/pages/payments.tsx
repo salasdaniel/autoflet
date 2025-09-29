@@ -51,6 +51,7 @@ export default function FormIndex() {
         vehiculo: string;
         chapa: string;
         monto_pago: number;
+        saldo: number;
         moneda: string;
         fecha_pago: string;
         fecha_cobro: string | null;
@@ -87,6 +88,8 @@ export default function FormIndex() {
     const [filtroFechaCobro, setFiltroFechaCobro] = useState('');
     const [filtroFechaCobroHasta, setFiltroFechaCobroHasta] = useState('');
     const [filtroPagado, setFiltroPagado] = useState('0'); // Por defecto filtrar "NO pagado"
+    // Si se recibe ?id_vehiculo= en la URL, lo guardamos aquí y también lo mostramos en el input
+    const [filtroIdVehiculo, setFiltroIdVehiculo] = useState<number | null>(null);
 
     // Ordenamiento (opcional)
     const [ordenCampo, setOrdenCampo] = useState<'id_pago' | 'nro_contrato' | 'chofer' | 'vehiculo' | 'chapa' | 'fecha_pago' | 'fecha_cobro' | 'pagado'>('id_pago');
@@ -163,6 +166,21 @@ export default function FormIndex() {
             .catch(() => setPaymentTypes([]));
     }, []);
 
+    // Al montar, leer id_vehiculo de la query string y sincronizar el input / filtro
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        const idVeh = params.get('id_vehiculo');
+        if (idVeh) {
+            const idNum = Number(idVeh);
+            if (!Number.isNaN(idNum)) {
+                setFiltroIdVehiculo(idNum);
+                // llenar el input visible con el valor recibido (el usuario puede cambiarlo)
+                setFiltroVehiculo(idVeh);
+            }
+        }
+    }, []);
+
     // load bancos when needed (e.g., when transferencia selected)
     useEffect(() => {
         const tipo = paymentTypes.find(t => t.id === formTipoId);
@@ -196,13 +214,21 @@ export default function FormIndex() {
             return true;
         })();
 
+        // Determinar id de vehículo del payment (puede venir con distintos nombres desde backend)
+        const obj = p as unknown as Record<string, unknown>;
+        const paymentVehId = (typeof obj['id_vehiculo'] !== 'undefined') ? Number(obj['id_vehiculo'])
+            : (typeof obj['vehiculo_id'] !== 'undefined') ? Number(obj['vehiculo_id'])
+            : (typeof obj['vehiculoId'] !== 'undefined') ? Number(obj['vehiculoId'])
+            : null;
+
         return (
-            (filtroVehiculo === '' || p.vehiculo.toLowerCase().includes(filtroVehiculo.toLowerCase())) &&
-            (filtroChofer === '' || p.chofer.toLowerCase().includes(filtroChofer.toLowerCase())) &&
+            (filtroVehiculo === '' || (p.vehiculo || '').toString().toLowerCase().includes(filtroVehiculo.toLowerCase())) &&
+            (filtroChofer === '' || (p.chofer || '').toString().toLowerCase().includes(filtroChofer.toLowerCase())) &&
             (filtroContrato === '' || String(p.nro_contrato).includes(filtroContrato)) &&
-            (filtroChapa === '' || p.chapa.toLowerCase().includes(filtroChapa.toLowerCase())) &&
+            (filtroChapa === '' || (p.chapa || '').toString().toLowerCase().includes(filtroChapa.toLowerCase())) &&
             fechaCobroValida &&
-            (filtroPagado === '' || filtroPagado === 'all' || (filtroPagado === '1' ? p.pagado === true : p.pagado === false))
+            (filtroPagado === '' || filtroPagado === 'all' || (filtroPagado === '1' ? !!obj['pagado'] : !obj['pagado'])) &&
+            (filtroIdVehiculo === null || paymentVehId === filtroIdVehiculo)
         );
     });
 
@@ -246,6 +272,7 @@ export default function FormIndex() {
             'Vehículo': payment.vehiculo,
             'Chapa': payment.chapa,
             'Monto': payment.monto_pago,
+            'Saldo': payment.saldo,
             'Moneda': payment.moneda,
             'Fecha Pago': payment.fecha_pago ? payment.fecha_pago.split('T')[0] : '-',
             'Fecha Cobro': payment.fecha_cobro ? payment.fecha_cobro.split('T')[0] : '-',
@@ -804,6 +831,7 @@ export default function FormIndex() {
                                     <TableHead>Vehículo</TableHead>
                                     <TableHead>Chapa</TableHead>
                                     <TableHead>Monto</TableHead>
+                                    <TableHead>Saldo</TableHead>
                                     <TableHead>Moneda</TableHead>
                                     <TableHead>Fecha Pago</TableHead>
                                     <TableHead>Fecha Cobro</TableHead>
@@ -819,6 +847,15 @@ export default function FormIndex() {
                                         <TableCell>{payment.vehiculo}</TableCell>
                                         <TableCell>{payment.chapa}</TableCell>
                                         <TableCell>{payment.monto_pago}</TableCell>
+                                        <TableCell className="font-medium text-right">
+                                            <span className={payment.saldo > 0 ? 'text-orange-600' : 'text-green-600'}>
+                                                {Number(payment.saldo).toLocaleString("es-PY", { 
+                                                    style: "currency", 
+                                                    currency: "PYG", 
+                                                    minimumFractionDigits: 0 
+                                                })}
+                                            </span>
+                                        </TableCell>
                                         <TableCell>{payment.moneda}</TableCell>
                                         <TableCell>{payment.fecha_pago ? payment.fecha_pago.split('T')[0] : '-'}</TableCell>
                                         <TableCell>{payment.fecha_cobro ? payment.fecha_cobro.split('T')[0] : '-'}</TableCell>

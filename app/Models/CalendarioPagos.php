@@ -14,6 +14,7 @@ class CalendarioPagos extends Model
         'id_chofer',
         'id_contrato',
         'monto_pago',
+        'saldo',
         'fecha_cobro',
         'fecha_pago',
         'pagado',
@@ -23,6 +24,7 @@ class CalendarioPagos extends Model
 
     protected $casts = [
         'monto_pago' => 'decimal:2',
+        'saldo' => 'decimal:2',
         'fecha_cobro' => 'date',
         'fecha_pago' => 'date',
         'pagado' => 'boolean',
@@ -75,6 +77,10 @@ class CalendarioPagos extends Model
         static::creating(function ($calendarioPago) {
             if (Auth::check()) {
                 $calendarioPago->id_user = Auth::id();
+            }
+            // Inicializar saldo con el valor del monto_pago
+            if (!isset($calendarioPago->saldo) && isset($calendarioPago->monto_pago)) {
+                $calendarioPago->saldo = $calendarioPago->monto_pago;
             }
         });
     }

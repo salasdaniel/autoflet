@@ -4,7 +4,7 @@ import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid, Car, CircleDollarSign,PiggyBank,Landmark } from 'lucide-react';
+import { BookOpen, Folder, LayoutGrid, Car, CircleDollarSign,PiggyBank,Landmark, FileText } from 'lucide-react';
 import AppLogo from './app-logo';
 
 const mainNavItems: NavItem[] = [
@@ -17,6 +17,11 @@ const mainNavItems: NavItem[] = [
         title: 'Vehiculos',
         href: '/pagos',
         icon: Car,
+    },
+    {
+        title: 'Contratos',
+        href: '/contratos',
+        icon: FileText,
     },
     {
         title: 'Pagos',

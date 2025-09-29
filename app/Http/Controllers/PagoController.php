@@ -44,7 +44,15 @@ class PagoController extends Controller
         // actualizar calendario_pagos
         $pago = CalendarioPagos::find($data['id_calendario_pago']);
         if ($pago) {
-            $pago->pagado = true;
+            // Restar el monto del pago al saldo
+            $pago->saldo = $pago->saldo - $data['monto'];
+            
+            // Si el saldo es 0 o menor, marcar como pagado
+            if ($pago->saldo <= 0) {
+                $pago->pagado = true;
+                $pago->saldo = 0; // Asegurar que no quede en negativo
+            }
+            
             // Como fecha_pago es tipo DATE, usar solo la fecha actual sin hora
             $pago->fecha_pago = now()->format('Y-m-d');
             $pago->save();
@@ -66,10 +74,11 @@ class PagoController extends Controller
 
         // Obtener información del calendario de pagos
         $calendarioPago = CalendarioPagos::with(['contrato.chofer', 'contrato.vehiculo'])
+            ->where('activo', true)
             ->find($idCalendarioPago);
 
         if (!$calendarioPago) {
-            return response()->json(['error' => 'Calendario de pago no encontrado'], 404);
+            return response()->json(['error' => 'Calendario de pago no encontrado o inactivo'], 404);
         }
 
         // Preparar la respuesta con el formato esperado por el frontend
@@ -84,7 +93,7 @@ class PagoController extends Controller
             'adjunto_path' => $formaCobro->adjunto,
             'fecha_pago' => $formaCobro->fecha_pago,
             'chofer' => $calendarioPago->contrato->chofer ? $calendarioPago->contrato->chofer->nombre . ' ' . $calendarioPago->contrato->chofer->apellido : '',
-            'vehiculo' => $calendarioPago->contrato->vehiculo ? $calendarioPago->contrato->vehiculo->marca . ' ' . $calendarioPago->contrato->vehiculo->modelo : '',
+            'vehiculo' => $calendarioPago->contrato->vehiculo ? $calendarioPago->contrato->vehiculo->modelo . ' - ' . $calendarioPago->contrato->vehiculo->chapa : '',
             'chapa' => $calendarioPago->contrato->vehiculo ? $calendarioPago->contrato->vehiculo->chapa : '',
             'nro_contrato' => $calendarioPago->contrato->id ?? null,
         ];

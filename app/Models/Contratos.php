@@ -56,6 +56,14 @@ class Contratos extends Model
     }
 
     /**
+     * Relación con régimen de pago
+     */
+    public function regimenPago(): BelongsTo
+    {
+        return $this->belongsTo(RegimenPago::class, 'regimen_pago');
+    }
+
+    /**
      * Relación con calendario de pagos
      */
     public function calendarioPagos(): HasMany

@@ -28,6 +28,7 @@ class VehiculoController extends Controller
             'fechaFin' => 'required|date|after_or_equal:fechaInicio',
             'regimenPago' => 'required|numeric',
             'montoContrato' => 'required|numeric|min:0', // Monto del contrato, si se proporciona
+            'cantidadPagos' => 'required|numeric|min:1',
         ]);
 
         // dd($request);
@@ -100,12 +101,12 @@ class VehiculoController extends Controller
                     $vehiculo->id_chofer,
                     $validated['regimenPago'],
                     $validated['montoContrato'],
-                    $vehiculo->id // Pasar el ID del vehículo al contrato
+                    $vehiculo->id, // Pasar el ID del vehículo al contrato
+                    $validated['cantidadPagos'] ?? null
                 );
 
-                // Ahora puedes acceder al ID del contrato creado
-                // $dd('Contrato creado con ID:', $contrato->id);
-                PagosController::addCalendarioPago($contrato->id);
+                // Crear calendario de pagos usando la cantidad indicada por el usuario
+                PagosController::addCalendarioPago($contrato->id, $validated['cantidadPagos'] ?? null);
 
                 return to_route('pagos')->with('success', 'Vehículo agregado correctamente.');
             } else {

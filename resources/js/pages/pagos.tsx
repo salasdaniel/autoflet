@@ -146,15 +146,31 @@ export default function PagosIndex() {
         fechaCompra: z.string({ required_error: "Fecha de compra es requerida" }),
         nuevoChofer: z.boolean().optional(), // para saber si se va a crear un nuevo chofer o no
         id_chofer: z.string().optional(),
-        nombre: z.string({ required_error: "Nombre es requerido" }).optional(),
-        ci: z.string({ required_error: "Cédula es requerida" })
-            .regex(/^\d+$/, "Solo se permiten números"),
-        telefono: z.string({ required_error: "Teléfono es requerido" }).optional(),
+        nombre: z.string().optional(),
+        ci: z.string().optional(),
+        telefono: z.string().optional(),
         fechaInicio: z.string({ required_error: "Fecha de inicio es requerida" }),
         fechaFin: z.string({ required_error: "Fecha de fin es requerida" }),
         regimenPago: z.string({ required_error: "Regimen de Pago es requerido" }),
         montoContrato: z.string({ required_error: "Monto es Requerido" })
             .regex(/^\d+$/, "Solo se permiten números"),
+    cantidadPagos: z.string().regex(/^\d*$/, "Solo se permiten números").optional(),
+    }).superRefine((data, ctx) => {
+        // Si se va a crear un nuevo chofer, nombre y ci son obligatorios
+        if (data.nuevoChofer) {
+            if (!data.nombre || data.nombre.trim() === '') {
+                ctx.addIssue({ path: ['nombre'], code: z.ZodIssueCode.custom, message: 'Nombre es requerido' });
+            }
+            if (!data.ci || !/^\d+$/.test(data.ci)) {
+                ctx.addIssue({ path: ['ci'], code: z.ZodIssueCode.custom, message: 'Cédula es requerida y debe ser numérica' });
+            }
+        }
+        // Si no es nuevo chofer, id_chofer debe existir
+        if (!data.nuevoChofer) {
+            if (!data.id_chofer || data.id_chofer.trim() === '') {
+                ctx.addIssue({ path: ['id_chofer'], code: z.ZodIssueCode.custom, message: 'Debe seleccionar un chofer existente' });
+            }
+        }
     });
 
     const choferSchema = z.object({
@@ -200,7 +216,7 @@ export default function PagosIndex() {
         chapa: string;
         modelo: string;
         color: string;
-        valor: string;
+        valor_compra: string;
         fechaCompra: string;
         nombre_completo: string; // Nombre del chofer si se crea uno nuevo
         cedula: string; // Cédula del chofer si se crea uno nuevo
@@ -219,6 +235,62 @@ export default function PagosIndex() {
             .then((res) => res.json())
             .then((data) => setOpciones(data));
     };
+
+    // --- CÁLCULO DE CANTIDAD DE PAGOS (frontend) ---
+    // helper para obtener dias del regimen
+    const diasPorRegimen = (r: string) => {
+        switch (r) {
+            case '1':
+                return 1; // diario
+            case '2':
+                return 7; // semanal
+            case '3':
+                return 15; // quincenal
+            case '4':
+                return 30; // mensual
+            default:
+                return 30;
+        }
+    }
+
+    // Observamos los campos relevantes del form
+    const fechaInicioVal = form.watch('fechaInicio');
+    const fechaFinVal = form.watch('fechaFin');
+    const regimenPagoVal = form.watch('regimenPago') || regimen;
+
+    const calcularCantidadPagos = () => {
+        if (!fechaInicioVal || !fechaFinVal) return 0;
+        const inicio = new Date(fechaInicioVal);
+        const fin = new Date(fechaFinVal);
+        if (isNaN(inicio.getTime()) || isNaN(fin.getTime())) return 0;
+        const diffMs = Math.abs(fin.getTime() - inicio.getTime());
+        const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        const diasReg = diasPorRegimen(String(regimenPagoVal));
+        if (diasReg <= 0) return 0;
+        // calcular cantidad de pagos: dividir y redondear hacia abajo
+        const cantidad = Math.floor(diffDias / diasReg);
+        return cantidad > 0 ? cantidad : 0;
+    }
+
+    const cantidadPagos = calcularCantidadPagos();
+    const [cantidadEdited, setCantidadEdited] = useState(false);
+
+    // Si el usuario cambia el régimen o las fechas, permitir que el cálculo automático
+    // vuelva a escribirse (incluso si el usuario previamente editó el campo).
+    useEffect(() => {
+        // al cambiar estas dependencias, forzamos que la UI vuelva a sincronizar
+        // el valor calculado en lugar de respetar la edición manual previa
+        setCantidadEdited(false);
+    }, [regimenPagoVal, fechaInicioVal, fechaFinVal]);
+
+    // Inicializar/actualizar el campo editable 'cantidadPagos' sólo si el usuario no lo editó manualmente
+    useEffect(() => {
+        if (!cantidadEdited) {
+            // si el usuario no editó, actualizar con el cálculo (incluso si es 0)
+            form.setValue('cantidadPagos', String(cantidadPagos));
+        }
+        // sólo cuando cambien fechas o regimen
+    }, [fechaInicioVal, fechaFinVal, regimenPagoVal, cantidadPagos, cantidadEdited, form]);
 
     const cargarTotales = () => {
         fetch("/getTotalesVehiculos")
@@ -252,15 +324,65 @@ export default function PagosIndex() {
 
     const onSubmit = form.handleSubmit((values) => {
         setIsLoading(true)
-        // console.log("Datos del formulario:", values);
+        console.log("Se ejecuta");
         // router.post('/vehiculos', values);
         router.post('/vehiculos', values, {
-            onSuccess: () => {
+            onSuccess: (page) => {
                 console.log('🚀 Éxito al guardar');
                 toast.success('El vehículo fue registrado correctamente.');
                 form.reset(); // reiniciar el formulario
                 setIsOpen(false); // cerrar el modal
-                cargarVehiculos();
+                // Si el servidor nos devolvió el objeto creado, agregarlo al estado local
+                // La estructura depende de la respuesta del backend; probamos varios accesos seguros.
+                try {
+                    const nuevo = (page && page.props && page.props.nuevoVehiculo) || (page && page.props && page.props.vehiculo) || page?.props?.data || page?.props || null;
+                    if (nuevo && typeof nuevo === 'object') {
+                        // Intentar normalizar la respuesta a VehiculoOption
+                        const normalizar = (obj: unknown): VehiculoOption | null => {
+                            if (!obj) return null;
+                            // Si vino como array, intentar extraer el primer elemento
+                            if (Array.isArray(obj) && (obj as unknown[]).length) return normalizar((obj as unknown[])[0]);
+
+                            const o = obj as Record<string, unknown>;
+                            const val = (k: string) => o[k];
+
+                            const idVal = val('id');
+                            const chapaVal = val('chapa');
+                            const modeloVal = val('modelo');
+
+                            if (typeof idVal !== 'undefined' && (typeof chapaVal !== 'undefined' || typeof modeloVal !== 'undefined')) {
+                                return {
+                                    id: Number(idVal),
+                                    chapa: String(chapaVal ?? ''),
+                                    modelo: String(modeloVal ?? ''),
+                                    color: String(val('color') ?? ''),
+                                    valor_compra: String(val('valor') ?? ''),
+                                    fechaCompra: String(val('fechaCompra') ?? ''),
+                                    nombre_completo: String(val('nombre_completo') ?? val('nombre') ?? ''),
+                                    cedula: String(val('cedula') ?? val('ci') ?? ''),
+                                } as VehiculoOption;
+                            }
+
+                            // si hay una propiedad obvia
+                            if (typeof o['data'] !== 'undefined') return normalizar(o['data']);
+                            return null;
+                        }
+
+                        const nuevoNormal = normalizar(nuevo);
+                        if (nuevoNormal) {
+                            setVehiculos((prev) => [nuevoNormal, ...prev]);
+                        } else {
+                            cargarVehiculos();
+                        }
+                    } else {
+                        // fallback: recargar la lista desde el servidor
+                        cargarVehiculos();
+                    }
+                } catch (e) {
+                    console.error('Error procesando respuesta onSuccess:', e);
+                    cargarVehiculos();
+                }
+
                 cargarChoferes();
             },
             onError: (errorResponse) => {
@@ -485,12 +607,12 @@ export default function PagosIndex() {
 
                         <div className="mt-6">
                             <Dialog open={isOpen} onOpenChange={setIsOpen} >
+                                <DialogTrigger asChild>
+                                    <Button variant="outline" className='text-white bg-blue-500 hover:bg-blue-700 hover:text-white py-2 px-4 rounded'>+ Agregar Vehiculo</Button>
+                                </DialogTrigger>
                                 {/* la puta madre que nos pario empieza */}
                                 <Form {...form}>  {/* se debe pasar las propiedades del form instanciado*/}
                                     <form onSubmit={onSubmit} >
-                                        <DialogTrigger asChild>
-                                            <Button variant="outline" className='text-white bg-blue-500 hover:bg-blue-700 hover:text-white py-2 px-4 rounded'>+ Agregar Vehiculo</Button>
-                                        </DialogTrigger>
                                         <DialogContent className="max-h-[80vh] overflow-y-auto" >
                                             <DialogHeader>
                                                 <DialogTitle>Agregar nuevo vehículo</DialogTitle>
@@ -726,25 +848,77 @@ export default function PagosIndex() {
                                                     </FormItem>
                                                 )}
                                             />
-                                            <FormField name="montoContrato" control={form.control} render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Monto de pago</FormLabel>
-                                                    <FormControl>
-                                                        <Input type="number" placeholder="Ejemplo: 80.000" {...field} />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
+                                            <div className="flex gap-4">
+                                                <FormField name="montoContrato" control={form.control} render={({ field }) => (
+                                                    <FormItem className="flex-1">
+                                                        <FormLabel>Monto de pago</FormLabel>
+                                                        <FormControl>
+                                                            <Input type="number" placeholder="Ejemplo: 80.000" {...field} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )} />
 
-                                            )} />
+                                                <FormField name="cantidadPagos" control={form.control} render={({ field }) => (
+                                                    <FormItem className="w-40">
+                                                        <FormLabel>Cantidad de pagos</FormLabel>
+                                                        <FormControl>
+                                                            <Input type="number" {...field} onChange={(e) => { field.onChange(e); setCantidadEdited(true); }} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )} />
+                                            </div>
                                             <FormDescription>
                                                 El monto de pago es el valor que se cobrará al chofer por el uso del vehículo segun el regiemen seleccionado.
                                             </FormDescription>
+                                            
                                             <DialogFooter>
                                                 <DialogClose asChild>
                                                     <Button variant="outline">Cancel</Button>
                                                 </DialogClose>
 
-                                                <Button onClick={onSubmit} disabled={isLoading}>{isLoading ? "Procesando..." : "Agregar Vehiculo"}</Button>
+                                                <Button
+                                                    onClick={() => {
+                                                        console.log('click: Agregar Vehiculo');
+                                                        const submitFn = form.handleSubmit(async (values) => {
+                                                            console.log('submit values', values);
+                                                            // Validación adicional: cantidadPagos debe ser > 0
+                                                            const cantidad = Number(values.cantidadPagos || 0);
+                                                            if (!cantidad || cantidad <= 0) {
+                                                                form.setError('cantidadPagos', { type: 'manual', message: '' });
+                                                                return;
+                                                            }
+                                                            setIsLoading(true);
+                                                            // Normalizar tipos: convertir strings numéricos a Number antes de enviar
+                                                            const payload = {
+                                                                ...values,
+                                                                cantidadPagos: Number(values.cantidadPagos || 0),
+                                                                montoContrato: Number(values.montoContrato || 0),
+                                                                valor: Number(values.valor || 0),
+                                                            };
+
+                                                            router.post('/vehiculos', payload, {
+                                                                onSuccess: () => {
+                                                                    setIsOpen(false);
+                                                                    form.reset();
+                                                                    setIsLoading(false);
+                                                                },
+                                                                onError: () => {
+                                                                    setIsLoading(false);
+                                                                }
+                                                            });
+                                                        }, (errors) => {
+                                                            console.log('validation failed', errors);
+                                                        });
+
+                                                        // Ejecutar la función devuelta para forzar la validación/submisión
+                                                        submitFn();
+                                                    }}
+                                                    disabled={isLoading}
+                                                >
+                                                    {isLoading ? "Procesando..." : "Agregar Vehiculo"}
+                                                </Button>
 
 
                                             </DialogFooter>
@@ -767,9 +941,10 @@ export default function PagosIndex() {
                                 <CardHeader className="flex flex-col gap-1">
 
                                     <CardTitle className="text-base">
-                                        {v.id}-{v.modelo}
+                                        {v.id} - {v.modelo}
                                     </CardTitle>
                                     <p className="text-sm text-muted-foreground">{v.chapa} <Badge variant="outline">{v.color}</Badge></p>
+                                    <p className="text-sm font-semibold text-gray-700">Precio: {Number(v.valor_compra || 0).toLocaleString('es-PY', { style: 'currency', currency: 'PYG', minimumFractionDigits: 0 })}</p>
                                 </CardHeader>
                                 <CardContent className="flex flex-col gap-2">
                                     <div>
@@ -928,7 +1103,10 @@ export default function PagosIndex() {
                                         <br />
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button onClick={() => router.visit('/paymentsDetails')} className='text-white bg-blue-500 hover:bg-blue-700 hover:text-white py-2 px-4 rounded w-full hover:cursor-pointer' size="sm">Ver Pagos</Button>
+                                        <div className="flex flex-col gap-2 w-full">
+                                            <Button onClick={() => router.get('/contratos', { id_vehiculo: v.id })} className='text-white bg-indigo-600 hover:bg-indigo-800 hover:text-white py-2 px-4 rounded w-full hover:cursor-pointer' size="sm">Ver Contratos</Button>
+                                            <Button onClick={() => router.get('/paymentsDetails', { id_vehiculo: v.id })} className='text-white bg-blue-500 hover:bg-blue-700 hover:text-white py-2 px-4 rounded w-full hover:cursor-pointer' size="sm">Ver Pagos</Button>
+                                        </div>
                                         {/* <Button variant="destructive" size="sm" className="w-full">No Pagó</Button> */}
                                     </div>
                                 </CardContent>

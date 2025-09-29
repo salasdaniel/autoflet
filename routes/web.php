@@ -58,6 +58,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/getPaymentDetails', function () {
         return \App\Models\CalendarioPagos::with(['chofer', 'contrato.vehiculo'])
+            ->where('activo', true)
             ->get()
             ->map(function($pago) {
                 return [
@@ -68,6 +69,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
                         $pago->contrato->vehiculo->id . '-' . $pago->contrato->vehiculo->modelo : null,
                     'chapa' => $pago->contrato && $pago->contrato->vehiculo ? $pago->contrato->vehiculo->chapa : null,
                     'monto_pago' => $pago->monto_pago,
+                    'saldo' => $pago->saldo,
                     'moneda' => $pago->contrato ? $pago->contrato->moneda : 'PYG',
                     'fecha_pago' => $pago->fecha_pago,
                     'fecha_cobro' => $pago->fecha_cobro,
@@ -294,6 +296,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('reporteIngresos', function () {
         return Inertia::render('ingresos');
     })->name('reporteIngresos');
+
+    // Rutas para contratos
+    Route::resource('contratos', \App\Http\Controllers\ContratoController::class);
+    // Ruta para anular contrato (inactiva calendarios_pagos y marca contrato como anulado)
+    Route::post('/contratos/{contrato}/anular', [\App\Http\Controllers\ContratoController::class, 'anular']);
+    Route::get('/getContratosData', [\App\Http\Controllers\ContratoController::class, 'getData']);
 });
 
 require __DIR__ . '/settings.php';
